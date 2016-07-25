@@ -43,13 +43,14 @@ public class WriteThread extends Thread {
 
         while (active) {
             try {
+//                Log.d(TAG, "writeQueue.size() = " + writeQueue.size());
                 while (!writeQueue.isEmpty()) {
                     RtmpPacket rtmpPacket = writeQueue.poll();
                     ChunkStreamInfo chunkStreamInfo = rtmpSessionInfo.getChunkStreamInfo(rtmpPacket.getHeader().getChunkStreamId());
                     chunkStreamInfo.setPrevHeaderTx(rtmpPacket.getHeader());
                     rtmpPacket.getHeader().setAbsoluteTimestamp((int) chunkStreamInfo.markAbsoluteTimestampTx());
                     rtmpPacket.writeTo(out, rtmpSessionInfo.getTxChunkSize(), chunkStreamInfo);
-                    Log.d(TAG, "WriteThread: wrote packet: " + rtmpPacket + ", size: " + rtmpPacket.getHeader().getPacketLength());
+//                    Log.d(TAG, "WriteThread: wrote packet: " + rtmpPacket + ", size: " + rtmpPacket.getHeader().getPacketLength());
                     if (rtmpPacket instanceof Command) {
                         rtmpSessionInfo.addInvokedCommand(((Command) rtmpPacket).getTransactionId(), ((Command) rtmpPacket).getCommandName());
                     }
@@ -72,7 +73,7 @@ public class WriteThread extends Thread {
             }
 
             // Waiting for next packet
-            Log.d(TAG, "WriteThread: waiting...");
+//            Log.d(TAG, "WriteThread: waiting...");
             synchronized (txPacketLock) {
                 try {
                     // isEmpty() may take some time, so time out should be set to wait next offer

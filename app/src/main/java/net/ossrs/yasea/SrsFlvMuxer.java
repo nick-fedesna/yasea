@@ -136,11 +136,6 @@ public class SrsFlvMuxer {
         } else if (frame.is_audio()) {
             publisher.publishAudioData(frame.tag.data.array());
         }
-
-        if (frame.is_keyframe()) {
-            Log.i(TAG, String.format("worker: send frame type=%d, dts=%d, size=%dB",
-                    frame.type, frame.dts, frame.tag.size));
-        }
     }
 
     /**
@@ -202,6 +197,7 @@ public class SrsFlvMuxer {
                         }
                     }
                 }
+                Log.d(TAG, "worker loop done.");
             }
         });
         worker.start();
