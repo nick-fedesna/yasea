@@ -70,6 +70,10 @@ public class SrsFlvMuxer {
         publisher = new SrsRtmpPublisher(handler);
     }
 
+    public void setExceptionHandler(Thread.UncaughtExceptionHandler handler) {
+        SrsEncoder.exceptionHandler = handler;
+    }
+
     /**
      * get cached video frame number in publisher
      */
@@ -184,7 +188,9 @@ public class SrsFlvMuxer {
                             }
                         } catch (IOException ioe) {
                             ioe.printStackTrace();
-                            Thread.getDefaultUncaughtExceptionHandler().uncaughtException(worker, ioe);
+                            if (SrsEncoder.exceptionHandler != null) {
+                                SrsEncoder.exceptionHandler.uncaughtException(worker, ioe);
+                            }
                         }
                     }
                     // Waiting for next frame

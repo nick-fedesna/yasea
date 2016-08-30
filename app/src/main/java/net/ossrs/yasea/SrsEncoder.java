@@ -39,6 +39,8 @@ public class SrsEncoder {
 
     private volatile int mOrientation = Configuration.ORIENTATION_PORTRAIT;
 
+    public static Thread.UncaughtExceptionHandler exceptionHandler;
+
     private SrsFlvMuxer flvMuxer;
     private SrsMp4Muxer mp4Muxer;
 
@@ -80,6 +82,10 @@ public class SrsEncoder {
         } else {
             throw new IllegalStateException("Unsupported color format!");
         }
+    }
+
+    public void setExceptionHandler(Thread.UncaughtExceptionHandler handler) {
+        exceptionHandler = handler;
     }
 
     public int start() {
@@ -260,8 +266,9 @@ public class SrsEncoder {
                     yuvLock.notifyAll();
                 }
             } else {
-                Thread.getDefaultUncaughtExceptionHandler().uncaughtException(Thread.currentThread(),
-                        new IOException("Network is weak"));
+                if (exceptionHandler != null) {
+                    exceptionHandler.uncaughtException(Thread.currentThread(), new IOException("Network is weak"));
+                }
             }
         }
     }

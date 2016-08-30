@@ -8,6 +8,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import android.util.Log;
 
+import net.ossrs.yasea.SrsEncoder;
 import net.ossrs.yasea.rtmp.RtmpPublisher;
 import net.ossrs.yasea.rtmp.packets.Command;
 import net.ossrs.yasea.rtmp.packets.RtmpPacket;
@@ -62,12 +63,16 @@ public class WriteThread extends Thread {
                 out.flush();
             } catch (SocketException se) {
                 Log.e(TAG, "WriteThread: Caught SocketException during write loop, shutting down: " + se.getMessage());
-                Thread.getDefaultUncaughtExceptionHandler().uncaughtException(this, se);
+                if (SrsEncoder.exceptionHandler != null) {
+                    SrsEncoder.exceptionHandler.uncaughtException(this, se);
+                }
                 active = false;
                 continue;
             } catch (IOException ioe) {
                 Log.e(TAG, "WriteThread: Caught IOException during write loop, shutting down: " + ioe.getMessage());
-                Thread.getDefaultUncaughtExceptionHandler().uncaughtException(this, ioe);
+                if (SrsEncoder.exceptionHandler != null) {
+                    SrsEncoder.exceptionHandler.uncaughtException(this, ioe);
+                }
                 active = false;
                 continue;
             }
