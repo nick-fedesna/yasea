@@ -46,13 +46,13 @@ import net.ossrs.yasea.rtmp.RtmpPublisher;
  */
 public class SrsFlvMuxer {
     private volatile boolean connected = false;
-    private String rtmpUrl;
     private SrsRtmpPublisher publisher;
 
     private Thread worker;
     private final Object txFrameLock = new Object();
 
     private SrsFlv flv = new SrsFlv();
+    private boolean needToFindKeyFrame = true;
     private boolean sequenceHeaderOk = false;
     private SrsFlvFrame videoSequenceHeader;
     private SrsFlvFrame audioSequenceHeader;
@@ -77,14 +77,14 @@ public class SrsFlvMuxer {
     /**
      * get cached video frame number in publisher
      */
-    public final AtomicInteger getVideoFrameCacheNumber() {
+    public AtomicInteger getVideoFrameCacheNumber() {
         return publisher == null ? null : publisher.getVideoFrameCacheNumber();
     }
 
     /**
      * set video resolution for publisher
-     * @param width
-     * @param height
+     * @param width width
+     * @param height height
      */
     public void setVideoResolution(int width, int height) {
         if (publisher != null) {
@@ -119,47 +119,50 @@ public class SrsFlvMuxer {
         Log.i(TAG, "worker: disconnect SRS ok.");
     }
 
-    private void connect(String url) throws IllegalStateException, IOException {
-        if (!connected) {
-            Log.i(TAG, String.format("worker: connecting to RTMP server by url=%s\n", url));
-            publisher.connect(url);
-            publisher.publish("live");
-            Log.i(TAG, String.format("worker: connect to RTMP server by url=%s\n", url));
-            connected = true;
-            sequenceHeaderOk = false;
+    private void connect(String url) {
+        try {
+            if (!connected) {
+                Log.i(TAG, String.format("worker: connecting to RTMP server by url=%s\n", url));
+                publisher.connect(url);
+                publisher.publish("live");
+                Log.i(TAG, String.format("worker: connect to RTMP server by url=%s\n", url));
+                connected = true;
+                sequenceHeaderOk = false;
+            }
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            Thread.getDefaultUncaughtExceptionHandler().uncaughtException(Thread.currentThread(), ioe);
         }
     }
 
     private void sendFlvTag(SrsFlvFrame frame) throws IllegalStateException, IOException {
-        if (!connected || frame == null || frame.tag.size <= 0) {
+        if (!connected || frame == null) {
             return;
         }
 
         if (frame.is_video()) {
-            publisher.publishVideoData(frame.tag.data.array());
+            publisher.publishVideoData(frame.flvTag.array(), frame.dts);
         } else if (frame.is_audio()) {
-            publisher.publishAudioData(frame.tag.data.array());
+            publisher.publishAudioData(frame.flvTag.array(), frame.dts);
         }
+
     }
 
     /**
      * start to the remote SRS for remux.
      */
-    public void start(String url) throws IOException {
-        rtmpUrl = url;
+    public void start(final String rtmpUrl) throws IOException {
 
         worker = new Thread(new Runnable() {
             @Override
             public void run() {
+                connect(rtmpUrl);
+
                 while (!Thread.interrupted()) {
                     // Keep at least one audio and video frame in cache to ensure monotonically increasing.
                     while (!frameCache.isEmpty()) {
                         SrsFlvFrame frame = frameCache.poll();
                         try {
-                            // only connect when got keyframe.
-                            if (frame.is_keyframe()) {
-                                connect(rtmpUrl);
-                            }
                             // when sequence header required,
                             // adjust the dts by the current frame and sent it.
                             if (!sequenceHeaderOk) {
@@ -223,10 +226,12 @@ public class SrsFlvMuxer {
                 e.printStackTrace();
                 worker.interrupt();
             }
+            frameCache.clear();
             worker = null;
         }
 
-        Log.i(TAG, String.format("SrsFlvMuxer closed"));
+        needToFindKeyFrame = true;
+        Log.i(TAG, "SrsFlvMuxer closed");
     }
 
     /**
@@ -517,7 +522,7 @@ public class SrsFlvMuxer {
      */
     class SrsFlvFrame {
         // the tag bytes.
-        public SrsFlvFrameBytes tag;
+        public ByteBuffer flvTag;
         // the codec type for audio/aac and video/avc for instance.
         public int avc_aac_type;
         // the frame type, keyframe or not.
@@ -754,11 +759,6 @@ public class SrsFlvMuxer {
                 }
 
                 tbb.size = bb.position() - pos;
-                if (bb.position() < bi.size) {
-                    Log.i(TAG, String.format("annexb multiple match ok, pts=%d", bi.presentationTimeUs / 1000));
-                    SrsFlvMuxer.srs_print_bytes(TAG, tbbs, 16);
-                    SrsFlvMuxer.srs_print_bytes(TAG, bb.slice(), 16);
-                }
                 break;
             }
 
@@ -1005,23 +1005,34 @@ public class SrsFlvMuxer {
             int avc_packet_type = SrsCodecVideoAVCType.NALU;
             SrsFlvFrameBytes flv_tag = avc.mux_avc2flv(ibps, frame_type, avc_packet_type, dts, pts);
 
-            if (frame_type == SrsCodecVideoAVCFrame.KeyFrame) {
-                //Log.i(TAG, String.format("flv: keyframe %dB, dts=%d", flv_tag.size, dts));
-            }
-
             // the timestamp in rtmp message header is dts.
             rtmp_write_packet(SrsCodecFlvTag.Video, dts, frame_type, avc_packet_type, flv_tag);
         }
 
         private void rtmp_write_packet(int type, int dts, int frame_type, int avc_aac_type, SrsFlvFrameBytes tag) {
             SrsFlvFrame frame = new SrsFlvFrame();
-            frame.tag = tag;
+            frame.flvTag = ByteBuffer.allocate(tag.size);
+            frame.flvTag.put(tag.data.array());
             frame.type = type;
             frame.dts = dts;
             frame.frame_type = frame_type;
             frame.avc_aac_type = avc_aac_type;
 
+            if (needToFindKeyFrame) {
+                if (frame.is_keyframe()) {
+                    needToFindKeyFrame = false;
+                    flvFrameCacheAdd(frame);
+                }
+            } else {
+                flvFrameCacheAdd(frame);
+            }
+        }
+
+        private void flvFrameCacheAdd(SrsFlvFrame frame) {
             frameCache.add(frame);
+            if (frame.is_video()) {
+                getVideoFrameCacheNumber().incrementAndGet();
+            }
             synchronized (txFrameLock) {
                 txFrameLock.notifyAll();
             }

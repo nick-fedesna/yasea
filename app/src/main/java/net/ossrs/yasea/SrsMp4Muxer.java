@@ -131,6 +131,11 @@ public class SrsMp4Muxer {
         createMovie(mRecFile);
         mHandler.onRecordStarted(mRecFile.getPath());
 
+        if (!spsList.isEmpty() && !ppsList.isEmpty()) {
+            mp4Movie.addTrack(videoFormat, false);
+        }
+        mp4Movie.addTrack(audioFormat, true);
+
         worker = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -187,8 +192,9 @@ public class SrsMp4Muxer {
     public void stop() {
         bRecording = false;
         bPaused = false;
-        needToFindKeyFrame = false;
+        needToFindKeyFrame = true;
         aacSpecConfig = false;
+        frameCache.clear();
 
 		if (worker != null) {
             try {
@@ -315,17 +321,12 @@ public class SrsMp4Muxer {
                     continue;
                 }
             }
-
-            if (!spsList.isEmpty() && !ppsList.isEmpty()) {
-                mp4Movie.addTrack(videoFormat, false);
-            }
         }
     }
 
     public void writeAudioSample(final ByteBuffer bb, MediaCodec.BufferInfo bi) {
         if (!aacSpecConfig) {
             aacSpecConfig = true;
-            mp4Movie.addTrack(audioFormat, true);
         } else {
             writeFrameByte(AUDIO_TRACK, bb, bi, false);
         }
@@ -463,9 +464,6 @@ public class SrsMp4Muxer {
                 }
 
                 tbb.size = bb.position() - pos;
-                if (bb.position() < bi.size) {
-                    Log.i(TAG, String.format("annexb multiple match ok, pts=%d", bi.presentationTimeUs / 1000));
-                }
                 break;
             }
 
@@ -594,24 +592,31 @@ public class SrsMp4Muxer {
             }
         }
 
-        public void addSample(long offset, MediaCodec.BufferInfo bufferInfo) {
-            long delta = bufferInfo.presentationTimeUs - lastPresentationTimeUs;
+        public void addSample(long offset, MediaCodec.BufferInfo bi) {
+            long delta = bi.presentationTimeUs - lastPresentationTimeUs;
             if (delta < 0) {
                 return;
             }
-            boolean isSyncFrame = !isAudio && (bufferInfo.flags & MediaCodec.BUFFER_FLAG_SYNC_FRAME) != 0;
-            samples.add(new Sample(offset, bufferInfo.size));
+            boolean isSyncFrame = !isAudio && (bi.flags & MediaCodec.BUFFER_FLAG_SYNC_FRAME) != 0;
+            samples.add(new Sample(offset, bi.size));
             if (syncSamples != null && isSyncFrame) {
                 syncSamples.add(samples.size());
             }
 
             delta = (delta * timeScale + 500000L) / 1000000L;
-            lastPresentationTimeUs = bufferInfo.presentationTimeUs;
+            lastPresentationTimeUs = bi.presentationTimeUs;
             if (!first) {
                 sampleDurations.add(sampleDurations.size() - 1, delta);
                 duration += delta;
             }
             first = false;
+        }
+
+        public void clearSample() {
+            first = true;
+            samples.clear();
+            syncSamples.clear();
+            sampleDurations.clear();
         }
 
         public ArrayList<Sample> getSamples() {
@@ -690,9 +695,9 @@ public class SrsMp4Muxer {
             return tracks;
         }
 
-        public void addSample(int trackIndex, long offset, MediaCodec.BufferInfo bufferInfo) {
+        public void addSample(int trackIndex, long offset, MediaCodec.BufferInfo bi) {
             Track track = tracks.get(trackIndex);
-            track.addSample(offset, bufferInfo);
+            track.addSample(offset, bi);
         }
 
         public void addTrack(MediaFormat format, boolean isAudio) {
@@ -702,12 +707,16 @@ public class SrsMp4Muxer {
                 tracks.put(VIDEO_TRACK, new Track(tracks.size(), format, false));
             }
         }
+
+        public void removeTrack(int trackIndex) {
+            tracks.remove(trackIndex);
+        }
     }
 
     public class InterleaveChunkMdat implements Box {
         private boolean first = true;
         private ContainerBox parent;
-        private ByteBuffer header;
+        private ByteBuffer header = ByteBuffer.allocateDirect(16);
         private long contentSize = 1024 * 1024 * 1024;
 
         public ContainerBox getParent() {
@@ -743,7 +752,7 @@ public class SrsMp4Muxer {
         }
 
         public void getBox(WritableByteChannel writableByteChannel) throws IOException {
-            header = ByteBuffer.allocate(16);
+            header.rewind();
             long size = getSize();
             if (isSmallBox(size)) {
                 IsoTypeWriter.writeUInt32(header, size);
@@ -784,7 +793,7 @@ public class SrsMp4Muxer {
         recFileSize += fileTypeBox.getSize();
     }
 
-    private void writeSampleData(ByteBuffer byteBuf, MediaCodec.BufferInfo bufferInfo, boolean isAudio) throws IOException {
+    private void writeSampleData(ByteBuffer byteBuf, MediaCodec.BufferInfo bi, boolean isAudio) throws IOException {
         int trackIndex = isAudio ? AUDIO_TRACK : VIDEO_TRACK;
         if (!mp4Movie.getTracks().containsKey(trackIndex)) {
             return;
@@ -798,13 +807,13 @@ public class SrsMp4Muxer {
             mdat.first = false;
         }
 
-        mp4Movie.addSample(trackIndex, recFileSize, bufferInfo);
-        byteBuf.position(bufferInfo.offset + (isAudio ? 0 : 4));
-        byteBuf.limit(bufferInfo.offset + bufferInfo.size);
+        mp4Movie.addSample(trackIndex, recFileSize, bi);
+        byteBuf.position(bi.offset + (isAudio ? 0 : 4));
+        byteBuf.limit(bi.offset + bi.size);
         if (!isAudio) {
             ByteBuffer size = ByteBuffer.allocateDirect(4);
             size.position(0);
-            size.putInt(bufferInfo.size - 4);
+            size.putInt(bi.size - 4);
             size.position(0);
             recFileSize += fc.write(size);
         }
