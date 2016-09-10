@@ -222,7 +222,7 @@ public class SrsMp4Muxer {
      * @return The track index for this newly added track.
      */
     public int addTrack(MediaFormat format) {
-        if (format.getString(MediaFormat.KEY_MIME).contentEquals(SrsEncoder.VCODEC)) {
+        if (format.getString(MediaFormat.KEY_MIME).contentEquals(SrsFlvMuxer.VCODEC)) {
             videoFormat = format;
             return VIDEO_TRACK;
         } else {
@@ -520,7 +520,7 @@ public class SrsMp4Muxer {
                 handler = "vide";
                 headerBox = new VideoMediaHeaderBox();
                 sampleDescriptionBox = new SampleDescriptionBox();
-                if (format.getString(MediaFormat.KEY_MIME).contentEquals(SrsEncoder.VCODEC)) {
+                if (format.getString(MediaFormat.KEY_MIME).contentEquals(SrsFlvMuxer.VCODEC)) {
                     VisualSampleEntry visualSampleEntry = new VisualSampleEntry("avc1");
                     visualSampleEntry.setDataReferenceIndex(1);
                     visualSampleEntry.setDepth(24);

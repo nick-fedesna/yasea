@@ -45,7 +45,17 @@ import net.ossrs.yasea.rtmp.RtmpPublisher;
  *      muxer.release();
  */
 public class SrsFlvMuxer {
+
+    private static final String TAG         = "SrsFlvMuxer";
+    public static final  String VCODEC      = "video/avc";
+    public static final  String ACODEC      = "audio/mp4a-latm";
+    private static final int    VIDEO_TRACK = 100;
+    private static final int    AUDIO_TRACK = 101;
+
+    public static Thread.UncaughtExceptionHandler exceptionHandler;
+
     private volatile boolean connected = false;
+
     private SrsRtmpPublisher publisher;
 
     private Thread worker;
@@ -58,10 +68,6 @@ public class SrsFlvMuxer {
     private SrsFlvFrame audioSequenceHeader;
     private ConcurrentLinkedQueue<SrsFlvFrame> frameCache = new ConcurrentLinkedQueue<SrsFlvFrame>();
 
-    private static final int VIDEO_TRACK = 100;
-    private static final int AUDIO_TRACK = 101;
-    private static final String TAG = "SrsFlvMuxer";
-
     /**
      * constructor.
      * @param handler the rtmp event handler.
@@ -71,7 +77,7 @@ public class SrsFlvMuxer {
     }
 
     public void setExceptionHandler(Thread.UncaughtExceptionHandler handler) {
-        SrsEncoder.exceptionHandler = handler;
+        exceptionHandler = handler;
     }
 
     /**
@@ -98,7 +104,7 @@ public class SrsFlvMuxer {
      * @return The track index for this newly added track.
      */
     public int addTrack(MediaFormat format) {
-        if (format.getString(MediaFormat.KEY_MIME).contentEquals(SrsEncoder.VCODEC)) {
+        if (format.getString(MediaFormat.KEY_MIME).contentEquals(VCODEC)) {
             flv.setVideoTrack(format);
             return VIDEO_TRACK;
         } else {
@@ -191,8 +197,8 @@ public class SrsFlvMuxer {
                             }
                         } catch (IOException ioe) {
                             ioe.printStackTrace();
-                            if (SrsEncoder.exceptionHandler != null) {
-                                SrsEncoder.exceptionHandler.uncaughtException(worker, ioe);
+                            if (exceptionHandler != null) {
+                                exceptionHandler.uncaughtException(worker, ioe);
                             }
                         }
                     }

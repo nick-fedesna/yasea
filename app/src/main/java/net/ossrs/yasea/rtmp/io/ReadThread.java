@@ -7,7 +7,7 @@ import java.net.SocketException;
 
 import android.util.Log;
 
-import net.ossrs.yasea.SrsEncoder;
+import net.ossrs.yasea.SrsFlvMuxer;
 import net.ossrs.yasea.rtmp.packets.RtmpPacket;
 
 /**
@@ -49,13 +49,13 @@ public class ReadThread extends Thread {
 //                }
             } catch (SocketException se) {
                 Log.e(TAG, "ReadThread: Caught SocketException while reading/decoding packet, shutting down: " + se.getMessage());
-                if (SrsEncoder.exceptionHandler != null) {
-                    SrsEncoder.exceptionHandler.uncaughtException(this, se);
+                if (SrsFlvMuxer.exceptionHandler != null) {
+                    SrsFlvMuxer.exceptionHandler.uncaughtException(this, se);
                 }
             } catch (IOException ioe) {
                 Log.e(TAG, "ReadThread: Caught exception while reading/decoding packet, shutting down: " + ioe.getMessage());
-                if (SrsEncoder.exceptionHandler != null) {
-                    SrsEncoder.exceptionHandler.uncaughtException(this, ioe);
+                if (SrsFlvMuxer.exceptionHandler != null) {
+                    SrsFlvMuxer.exceptionHandler.uncaughtException(this, ioe);
                 }
             }
         }
