@@ -454,9 +454,9 @@ public class SrsFlvMuxer {
      * utils functions from srs.
      */
     public class SrsUtils {
+        private final SrsAnnexbSearch as = new SrsAnnexbSearch();
 
         public SrsAnnexbSearch srs_avc_startswith_annexb(ByteBuffer bb, MediaCodec.BufferInfo bi) {
-            SrsAnnexbSearch as = new SrsAnnexbSearch();
             as.match = false;
 
             int pos = bb.position();
